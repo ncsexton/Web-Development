@@ -1,0 +1,12 @@
+.add-padding{ 
+	padding: 2em; 
+} 
+
+.left-padding{ 
+	left-padding: 2em; 
+} 
+
+.respond { 
+	max-width: 100%; 
+	height: auto; 
+} 
