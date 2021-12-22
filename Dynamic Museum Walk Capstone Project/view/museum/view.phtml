@@ -1,0 +1,284 @@
+<?php
+/******************************************************************************
+ * Dynamic Museum Walk (c) by Scott Maday, Nathon Sexton, Patel Deepkumar, 
+ * Noah Hylton, Scout Doran, Travis Ledbetter
+ * 
+ * Dynamic Museum Walk is licensed under a
+ * Creative Commons Attribution-ShareAlike 4.0 International License.
+ * 
+ * You should have received a copy of the license along with this
+ * work. If not, see <http://creativecommons.org/licenses/by-sa/4.0/>.
+ * 
+ * Authors: Scott Maday, {YOUR NAMES IF YOU WORKED ON THIS}
+ *****************************************************************************/
+?>
+<!-- Mobile -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<?php
+$plugins = $this->getHelperPluginManager();
+$thumbnail = $plugins->get('thumbnail');
+$hyperlink = $plugins->get('hyperlink');
+?>
+<?= $this->pageTitle(!empty($name) ? $escaper->escapeHtml($name) : "Museum viewer"); ?>
+
+<!-- Include stylesheet and jQuery  -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.5.0.js"></script>
+<style>
+<?php include 'css/view.css'; ?>
+</style>
+<link rel="stylesheet"  type='text/css' href="http://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.3.0/css/font-awesome.css">
+<script type="text/javascript" async src="//assets.pinterest.com/js/pinit.js"></script>
+
+<!-- Begin JavaScript section -->
+<script>
+
+var index = 1;
+var timer;
+var speed = Math.pow(2,31)-1;
+
+// Shorthand jQuery function for document.ready()
+$(function(){
+    showSlides(index);
+    timer = false;
+});
+// Name: nextSlide(n)
+// Purpose: this function manually switches the slide forward and backward
+function nextSlide(n) {
+    clearInterval(timer);
+    if(n < 0) {
+        showSlides(index -= 1);
+    } else {
+        showSlides(index += 1);
+    }
+    if(n === -1) {
+        timer = setInterval(function() {nextSlide(n + 2)}, speed);
+    } else {
+        timer = setInterval(function() {nextSlide(n + 1)}, speed);
+    }
+}
+// Name: showSlides(n)
+// Purpose: this function displays each slide by class name
+function showSlides(n) {
+    var i;
+    var slides = document.getElementsByClassName("fadein");
+    if(n > slides.length) {index = 1}
+    if(n < 1) {index = slides.length}
+    for(i = 0; i < slides.length; i++) {
+        slides[i].style.display = "none";
+    }
+    slides[index-1].style.display = "block";
+}
+// Name: setSpeed(s)
+// Purpose: this function allows the user to change the speed of the slideshow
+function setSpeed(s) {
+    clearInterval(timer);
+    if(s === 0) {
+        timer = false;
+        speed = Math.pow(2,31)-1;
+    }
+    else if(s === 1) {
+        speed = 20000;
+        timer = setInterval(function() {nextSlide(1)}, speed);
+    }
+    else if(s === 3) {
+        speed = 1000;
+        timer = setInterval(function() {nextSlide(1)}, speed);
+    }
+    else {
+        speed = 3000;
+        timer = setInterval(function() {nextSlide(1)}, speed);
+    }
+}
+</script>
+
+<?php
+//echo $this->searchFilters();
+$location = $this->url();
+$pieces = explode('/',$location);
+$base = $pieces[1]; 
+$itemUrlBase = url_origin($_SERVER) . '/' . $base;
+//Grab all audio items
+$queryStmnt = "SELECT item_id, storage_id, extension FROM media WHERE media_type='video/mp4' OR media_type='audio/mp3'";
+$con = $this->connection->fetchAll($queryStmnt);
+?>
+<div class="slideshow" id="slides">
+    <div class="fadein">
+        <img src="<?= $this->url("museum/slides",["num" => 0], ["query" => ["name" => $name]]); ?>"/>
+    </div>
+    <?php foreach($items as $item) : ?>
+        <?php $media = $item->primaryMedia(); 
+              $itemId = $item->id(); ?>
+        <?php foreach($con as $res): ?>
+            <?php $mediaId = $res['item_id']; ?>
+            <?php if($itemId == $mediaId): //if item is .mp3 or .mp4 then grab source file ?>
+                <?php $audio = $media->originalUrl();?>
+            <?php else: ?>
+                <?php if($media) : ?>
+                    <div class="fadein">
+                        <!-- create a link to the item page -->
+                        <a href="<?= $item->url(); ?>">
+                            <img src="<?= $this->url("museum/slides",["num" => $item->id()]); ?>"/>
+                        </a>
+                    </div>
+                <?php endif; ?>
+            <?php endif;?>
+        <?php endforeach;?>
+    <?php endforeach; ?>
+    <!-- Put previous and next buttons on the page -->
+    <a class="prev" onclick="nextSlide(-1)">&#10094;</a>
+    <a class="next" onclick="nextSlide(1)">&#10095;</a>
+</div>
+
+<button onclick="openFullscreen();">Open Video in Fullscreen Mode</button>
+
+<!--Audio-->
+<div class="audio">
+    <audio controls autoplay><source src="<?=$audio?>">Your browser does not support the audio element</audio>
+</div>
+
+<!-- Put save presentation button on page -->
+<a class="button" style="float:right;" href="<?= $this->url("admin/museum-admin/saves/add", [], ["query" => $query]); ?>">Save Presentation</a>
+
+<!-- Put speed selector on page -->
+<div class="speed">
+    <input type="radio" name="speed" onclick="setSpeed(0)" value="stop" checked>Stop
+    <input type="radio" name="speed" onclick="setSpeed(1)" value="slow">Slow
+    <input type="radio" name="speed" onClick="setSpeed(2)" value="normal">Normal
+    <input type="radio" name="speed" onClick="setSpeed(3)" value="fast">Fast
+</div>
+
+<!-- Share -->
+<?php
+    function url_origin( $s, $use_forwarded_host = false )
+    {
+        $ssl      = ( ! empty( $s['HTTPS'] ) && $s['HTTPS'] == 'on' );
+        $sp       = strtolower( $s['SERVER_PROTOCOL'] );
+        $protocol = substr( $sp, 0, strpos( $sp, '/' ) ) . ( ( $ssl ) ? 's' : '' );
+        $port     = $s['SERVER_PORT'];
+        $port     = ( ( ! $ssl && $port=='80' ) || ( $ssl && $port=='443' ) ) ? '' : ':'.$port;
+        $host     = ( $use_forwarded_host && isset( $s['HTTP_X_FORWARDED_HOST'] ) ) ? $s['HTTP_X_FORWARDED_HOST'] : ( isset( $s['HTTP_HOST'] ) ? $s['HTTP_HOST'] : null );
+        $host     = isset( $host ) ? $host : $s['SERVER_NAME'] . $port;
+        return $protocol . '://' . $host;
+    }
+
+    function full_url( $s, $use_forwarded_host = false )
+    {
+        return url_origin( $s, $use_forwarded_host ) . $s['REQUEST_URI'];
+    }
+
+    $absolute_url = full_url( $_SERVER );
+?>
+
+<script>
+    function mycopyFunction() {
+    /* Get the text field */
+    var copyText = document.getElementById("myInput");
+
+    /* Select the text field */
+    copyText.select();
+    /* Copy the text inside the text field */
+    navigator.clipboard.writeText(copyText.value);
+
+    /* Alert the copied text */
+    alert("Copied the text: " + copyText.value);
+    }
+</script>
+
+<script>
+var elem = document.getElementById("slides");
+function openFullscreen() {
+  if (elem.requestFullscreen) {
+    elem.requestFullscreen();
+  } else if (elem.webkitRequestFullscreen) { /* Safari */
+    elem.webkitRequestFullscreen();
+  } else if (elem.msRequestFullscreen) { /* IE11 */
+    elem.msRequestFullscreen();
+  }
+}
+</script>
+
+
+<?php /*To Do: Figure out how to take this line out without breaking code*/ ?>
+<input type="url" value=<?php echo $absolute_url; ?> class="link" id="myInput" size = "70" style="display:none" >
+
+<div class="container">
+        <button class="share-btn">
+            <i class="fas fa-share-alt"></i>
+        </button>
+        <div class="share-options">
+            <div class="social-media">
+                <button class="social-media-btn" onclick="redirectWhatsapp()"><i class="fa fa-whatsapp"></i></button>
+                <button class="social-media-btn" onclick="redirectTwitter()"><i class="fa fa-twitter"></i></button>
+                <button class="social-media-btn" onclick="redirectFB()"><i class="fa fa-facebook-f"></i></button>
+                <button class="social-media-btn" onclick="redirectLinkedin()"><i class="fa fa-linkedin-in"></i></button>
+                <button class="social-media-btn">
+                    <a href="https://www.pinterest.com/pin/create/button/" data-pin-do="buttonBookmark" data-pin-custom="true">
+                        <i class="fa fa-pinterest"></i>
+                    </a>
+                </button>
+                <button class="social-media-btn" onclick="redirectMail()"><i class="fa fa-envelope"></i></button>
+            </div>
+            <div class="link-container">
+                <input type="url" value=<?php echo $absolute_url; ?> class="link" size = "70">
+                <button class="copy-btn" onclick="mycopyFunction()">Copy</button>
+            </div>
+        </div>
+</div>
+
+<script> 
+    const shareBtn = document.querySelector('.share-btn');
+    const shareOptions = document.querySelector('.share-options');
+    
+    shareBtn.addEventListener('click', () => {
+        shareOptions.classList.toggle('active');
+    })
+
+    // redirect functions
+    function redirectFB() {
+        mycopyFunction();
+        window.location.href = "https://www.facebook.com"; 
+    }
+    function redirectTwitter() {
+        window.location.href = "https://twitter.com/intent/tweet?url=" + location.href;    
+    }
+    function redirectMail() {
+        window.location.href = "mailto:<%=emailTo%>?subject=Inactive Account Assistance";
+        //mailto:info@example.com?&subject=&cc=&bcc=&body=
+    }
+    function redirectWhatsapp(){
+        window.location.href = "https://api.whatsapp.com/send?text=" + location.href;
+    }
+    function redirectLinkedin(){
+        mycopyFunction();
+        window.location.href = "https://www.linkedin.com/feed/?shareActive=true";
+    }
+</script>
+
+
+<!-- Load Facebook SDK for JavaScript -->
+<div id="fb-root"></div>
+<script>(function(d, s, id) {
+var js, fjs = d.getElementsByTagName(s)[0];
+if (d.getElementById(id)) return;
+js = d.createElement(s); js.id = id;
+js.src = "https://connect.facebook.net/en_US/sdk.js#xfbml=1&version=v3.0";
+fjs.parentNode.insertBefore(js, fjs);
+}(document, 'script', 'facebook-jssdk'));</script>
+
+<!-- Your share button code -->
+<div class="fb-share-button" 
+data-href="https://www.your-domain.com/your-page.html" 
+data-layout="button_count">
+</div>
+
+<a class="twitter-share-button"
+  href="https://twitter.com/share" data-color="blue">
+Tweet</a>
+
+<script type="text/javascript" async defer src="//assets.pinterest.com/js/pinit.js"></script>
+<a href="https://www.pinterest.com/pin/create/button/" data-pin-do="buttonBookmark"> </a>
+
+<a href="mailto:<%=emailTo%>?subject=Inactive Account Assistance" 
+class="underline responsiveTextStnd">Email</a>

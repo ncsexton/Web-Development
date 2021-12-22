@@ -1,0 +1,74 @@
+<?php 
+/******************************************************************************
+ * Dynamic Museum Walk (c) by Scott Maday, Nathon Sexton, Patel Deepkumar, 
+ * Noah Hylton, Scout Doran, Travis Ledbetter
+ * 
+ * Dynamic Museum Walk is licensed under a
+ * Creative Commons Attribution-ShareAlike 4.0 International License.
+ * 
+ * You should have received a copy of the license along with this
+ * work. If not, see <http://creativecommons.org/licenses/by-sa/4.0/>.
+ *
+ * Authors: Scott Maday, Travis Ledbetter
+ *****************************************************************************/
+?>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<?= $this->pageTitle("Saved museums"); ?>
+<script>
+    function oneBox(checkbox) {
+        var checkboxes = document.getElementsByName("toDelete")
+        checkboxes.forEach((item) => {
+            if(item !== checkbox) item.checked = false
+        })
+    }
+</script>
+<?php if(isset($query["message"])): ?>
+<ul class="messages"><li class="success"><?= $escaper->escapeHtml($query["message"]) ?></li></ul>
+<?php endif; ?>
+<?php 
+$items = array();
+?>
+
+<form method="GET">
+    <table class="table" style="width:100%">
+        <tr>
+            <th style="width:25%">Title</th>
+            <th style="text-align:center">Preview</th>
+        </tr>
+        <?php foreach($museums as $key => $value) :?>
+        <?php $firstItem = $this->api()->searchOne('items',['id' => $value['items'][0]])->getContent(); ?>
+        <?php 
+            $items = $museums[$key]; 
+            ?>
+        <tr class="savedMuseums">
+            <td style="width:25%">
+                <?= $key; ?>
+            </td>
+            <td style="text-align:center">
+                <a href="<?= $this->url("museum/action", ["action" => "view"], ["query" => ["items" => $items["items"], "name" => $key]]); ?>">
+                <?=$this->thumbnail($firstItem,'medium');?>
+                </a>
+            </td>
+            <td style="text-align:right">
+                <input type="checkbox" name="" value="<?=$value['id']?>" onclick="oneBox(this)">
+            </td>
+        <?php endforeach; ?>
+        </tr>
+    </table>
+    <a id="delete" class="button" style="float:right" href="<?=$this->url("admin/museum-admin/saves/delete",["action"=>"delete","id"=>0]);?>">Delete Presentation</a>
+</form>
+
+<!-- 
+    The jQuery script below is used to alter the href tag of the Delete Presentation button
+    dynamically
+-->
+<script>
+    $(document).ready(function() {
+        $("#delete").click(function() {
+            var box = $("input[type=checkbox]:checked").val();
+            var oldUrl = $(this).attr("href");
+            var newUrl = oldUrl.replace("0",box);
+            $("#delete").attr("href",newUrl);
+        })
+    }); 
+</script>

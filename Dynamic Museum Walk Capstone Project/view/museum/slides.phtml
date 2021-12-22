@@ -1,0 +1,157 @@
+<?php
+/******************************************************************************
+ * Dynamic Museum Walk (c) by Scott Maday, Nathon Sexton, Patel Deepkumar, 
+ * Noah Hylton, Scout Doran, Travis Ledbetter
+ * 
+ * Dynamic Museum Walk is licensed under a
+ * Creative Commons Attribution-ShareAlike 4.0 International License.
+ * 
+ * You should have received a copy of the license along with this
+ * work. If not, see <http://creativecommons.org/licenses/by-sa/4.0/>.
+ * 
+ * Authors: Scott Maday
+ *****************************************************************************/
+
+// Parameters
+$width = $this->params()->fromQuery("width", 910);
+$height = $this->params()->fromQuery("height", 512);
+$horizontal_margin = 10;
+
+// Run-time generation
+$thumbnails = array();
+$thumbnailMetrics = array("maxHeight" => 0);
+
+// https://stackoverflow.com/a/21572500
+if(!function_exists("wordWrapAnnotation")) {
+function wordWrapAnnotation($image, $draw, $text, $maxWidth) {
+	$words = preg_split('%\s%', $text, -1, PREG_SPLIT_NO_EMPTY);
+	$lines = array();
+	$i = 0;
+	$lineHeight = 0;
+
+	while (count($words) > 0) {
+		$metrics = $image->queryFontMetrics($draw, implode(' ', array_slice($words, 0, ++$i)));
+		$lineHeight = max($metrics["textHeight"], $lineHeight);
+
+		if ($metrics["textWidth"] > $maxWidth or count($words) < $i) {
+			array_push($lines, implode(' ', array_slice($words, 0, --$i)));
+			$words = array_slice($words, $i);
+			$i = 0;
+		}
+	}
+
+	return array($lines, $lineHeight);
+}
+}
+
+if($item != null) {
+	foreach($item->media() as $media) {
+		if($media->hasThumbnails() == false) {
+			continue;
+		}
+		//$image = file_get_contents($media->originalUrl());
+		$image = file_get_contents($media->thumbnailUrl("large"));
+		$thumbnail = new Imagick();
+		$thumbnail->readImageBlob($image);
+		$geometry = $thumbnail->getImageGeometry();
+		$thumbnailMetrics["maxHeight"] = max($thumbnailMetrics["maxHeight"], $geometry["height"]);
+		array_push($thumbnails, array("title" => $media->title(), "geometry" => $geometry, "aspectRatio" => $geometry["width"] / $geometry["height"], "thumbnail" => $thumbnail));
+	}
+}
+
+$img = new Imagick();
+$img->newImage($width, $height, "white");
+// Title
+$pushdown_height = 50;
+$titleDraw = new ImagickDraw();
+$titleDraw->setFontSize(52);
+
+if($num == 0) {
+	$lineData = wordWrapAnnotation($img, $titleDraw, $name, $width - 2 * $horizontal_margin);
+	for($i = 0; $i < count($lineData[0]); $i++) {
+		$titleDraw->annotation($horizontal_margin, $pushdown_height + $i * $lineData[1], $lineData[0][$i]);
+	}
+	$img->drawImage($titleDraw);
+	$titleDraw->destroy();
+} else if($item != null) {
+	$pushdown_height = 50;
+	// Metadata
+	$titleDraw->annotation($horizontal_margin, $pushdown_height, $item->title());
+	// Class
+	$itemClassText = $item->displayResourceClassLabel();
+	$titleDraw->setFontSize(18);
+	$itemClassMetrics = $img->queryFontMetrics($titleDraw, $itemClassText);
+	$titleDraw->annotation($width - $itemClassMetrics["textWidth"] - $horizontal_margin, $pushdown_height, $itemClassText);
+	// Description
+	$pushdown_height += 40;
+	$titleDraw->setFontSize(22);
+	$lineData = wordWrapAnnotation($img, $titleDraw, $item->displayDescription(), $width - 2 * $horizontal_margin);
+	for($i = 0; $i < count($lineData[0]); $i++) {
+		$titleDraw->annotation($horizontal_margin, $pushdown_height + $i * $lineData[1], $lineData[0][$i]);
+	}
+	$pushdown_height += count($lineData[0]) * $lineData[1];
+	$img->drawImage($titleDraw);
+	$titleDraw->destroy();
+
+	// Media inflation data
+	$media_title_height = 25;
+	$bottom_margin_height = 5;
+	$heightConstraint = max($height - $pushdown_height - $media_title_height - $bottom_margin_height, 0);
+	$totalAspectWidth = 0;
+	foreach($thumbnails as $thumbnailData) {
+		$totalAspectWidth += $thumbnailData["aspectRatio"] * $thumbnailMetrics["maxHeight"];
+	}
+	if($totalAspectWidth == 0) {
+		goto finish;
+	}
+	// Media grid data
+	$singleRowPortion = ($width - (count($thumbnails) + 1) * $horizontal_margin) / $totalAspectWidth;
+	$singleRowWidthScalar = $thumbnailMetrics["maxHeight"] * $singleRowPortion;
+	$singleRowHeight = $singleRowPortion * $thumbnailMetrics["maxHeight"];
+	if($singleRowHeight > $heightConstraint) {
+		$singleRowWidthScalar = $heightConstraint;
+		$singleRowHeight = $heightConstraint;
+	}
+	$mediaDraw = new ImagickDraw();
+	$mediaDraw->setFontSize(14);
+	$mediaDraw->setTextAlignment(imagick::ALIGN_CENTER);
+	// Build media grid
+	$widthAccumulator = 0;
+	$heightAccumulator = 0;
+	$heightDiscriminator = 0;
+	foreach($thumbnails as $thumbnailData) {
+		$thumbnail = $thumbnailData["thumbnail"];
+		$thumbnailWidth = $thumbnailData["aspectRatio"] * $singleRowWidthScalar;
+		$thumbnailHeight = $singleRowHeight;
+		if($width - $widthAccumulator - $horizontal_margin <= $thumbnailWidth) {
+			$widthAccumulator = 0;
+			$heightAccumulator += $heightDiscriminator + $media_title_height;
+			$heightDiscriminator = 0;
+		}
+		$widthAccumulator += $horizontal_margin;
+		$mediaDraw->annotation($widthAccumulator + $thumbnailWidth / 2, $heightAccumulator + $media_title_height / 2, $thumbnailData["title"]);
+		$mediaDraw->composite(imagick::COMPOSITE_DEFAULT, $widthAccumulator, $heightAccumulator + $media_title_height, $thumbnailWidth, $thumbnailHeight, $thumbnail);
+		$widthAccumulator += $thumbnailWidth;
+		$heightDiscriminator = max($heightDiscriminator, $thumbnailHeight);
+		$thumbnail->destroy();
+	}
+	$heightAccumulator += $heightDiscriminator + $media_title_height;
+	$mediaImg = new Imagick();
+	$mediaImg->newImage($width, $heightAccumulator, "transparent");
+	$mediaImg->drawImage($mediaDraw);
+	$mediaDraw->destroy();
+	$img->compositeImage($mediaImg, imagick::COMPOSITE_DEFAULT, 0, $pushdown_height);
+	$mediaImg->destroy();
+	$pushdown_height += $heightAccumulator;
+} else {
+	$titleDraw->annotation($horizontal_margin, $pushdown_height, "Error for item $num");
+	$img->drawImage($titleDraw);
+	$titleDraw->destroy();
+}
+
+finish:
+	$img->setImageFormat("webp");
+	print($img);
+	$img->destroy();
+
+?>

@@ -1,0 +1,329 @@
+<?php
+/******************************************************************************
+ * Dynamic Museum Walk (c) by Scott Maday, Nathon Sexton, Patel Deepkumar, 
+ * Noah Hylton, Scout Doran, Travis Ledbetter
+ * 
+ * Dynamic Museum Walk is licensed under a
+ * Creative Commons Attribution-ShareAlike 4.0 International License.
+ * 
+ * You should have received a copy of the license along with this
+ * work. If not, see <http://creativecommons.org/licenses/by-sa/4.0/>.
+ * 
+ * Authors: Scott Maday, Nathan Sexton {YOUR NAMES IF YOU WORKED ON THIS}
+ *****************************************************************************/
+
+$item_sets = $this->api()->search("item_sets")->getContent();
+$escape = $this->plugin('escapeHtml');
+$originalSearchIDs = array(); //array to keep track of what was originally searched
+$nullQuery = true;
+?>
+<?= $this->pageTitle("Generate museum"); ?>
+
+<style>
+/* Fix weird form style error */
+.query-text {
+	margin: auto!important;
+}
+</style>
+
+<?php if($query == null): /* Stage 1 */ ?>
+<form action="generate" method="GET">
+    <div class="field">
+        <div class="field-meta">
+            <label for="name">Presentation name</label>
+        </div>
+        <div class="inputs">
+            <input type="text" name="name" id="name" placeholder="<?= $name; ?>">
+        </div>
+    </div>
+    <hr/>
+	<?= $this->partial("common/advanced-search", ["query" => $query, "resourceType" => "item"]); ?>
+	<input type="submit" value="Continue">
+</form>
+
+<?php else: /* Stage 2 */ ?>
+
+<?php if(count($dirtyItems) > 0): ?>
+<ul class="messages">
+    <li class="warning">Notice: Some items are ineligible</li>
+</ul>
+<div>
+    <table class="table" style="width:100%">
+        <tr>
+            <th style="width:25%">Title</th>
+            <th style="text-align:center">Preview</th>
+        </tr>
+    <?php foreach($dirtyItems as $item) : ?>
+        <?php $itemID = $item->id(); ?>
+        <tr class="itemList">
+            <td style="width:25%">
+                <?php echo $item->title(); ?>
+            </td>
+            <td style="text-align:center">
+                <label for="<?=$itemID?>"><?=$this->thumbnail($item,'medium');?></label>
+            </td>
+        </tr>
+    <?php endforeach; ?>
+    </table>
+</div>
+<?php endif; ?>
+
+
+<form action="view" method="GET">
+    <input type="hidden" name="name" value="<?= $name; ?>">
+    <table class="table" style="width:100%">
+        <div style="text-align:right">
+            <input type="checkbox" onClick="toggle(this)" checked />Select All<br/>
+        </div>
+        <tr>
+            <th style="width:25%">Title</th>
+            <th style="text-align:center">Preview</th>
+        </tr>
+    <?php foreach($items as $item) : ?>
+        <?php $itemID = $item->id(); 
+		array_push($originalSearchIDs, $itemID);?>
+        <tr class = "itemList" draggable = "true">
+            <td style="width:25%">
+                <?php echo $item->title(); ?>
+            </td>
+            <td style="text-align:center">
+                <label for="<?=$itemID?>"><?=$this->thumbnail($item,'medium');?></label>
+            </td>
+            <td style="text-align:right">
+                <i class="fa fa-bars"></i>
+            </td>
+            <td style="text-align:right">
+                <input type="checkbox" id = "<?=$itemID?>" name="items[]" value="<?= $itemID ?>" checked>
+            </td>
+        </tr>
+	<?php 
+	$nullQuery = false;
+	endforeach; ?>
+	<big> Searched Items: </big>
+		</table>
+<?php endif; ?>
+
+<?php if($nullQuery == false): ?>
+    <table class="table" style="width:100%">
+        <tr>
+            <th style="width:25%">Title</th>
+            <th style="text-align:center">Preview</th>
+        </tr>
+		
+		<?php
+		//First, need a query to obtain an item_set_id correlated to a selected item_id
+		$itemID = $items[0]->id(); //initializes the item to use as the first item in the search result
+		$itemSetStmnt = "SELECT item_set_id FROM item_item_set WHERE item_id = '$itemID' ";
+		$itemSet = $this->connection->fetchAll($itemSetStmnt);
+		
+		//grabs int value of item_set_id and stores it in itemsetID
+		$itemSetArray = array();
+		$placeholder = 0;
+		foreach($itemSet as $result)
+		{
+			$item_set_id = $result['item_set_id'];
+			array_push($itemSetArray, $item_set_id);
+		}
+
+		//Now we know what groups the first object belongs to, so next we need to get related items,
+		//in this case using mutual item sets
+		
+		//Create and execute query to fetch items with mutual item set(s)
+		$itemArray = array();
+		
+		foreach($itemSetArray as $itemsetID)
+		{
+			$extraItemsStmnt = "SELECT item_id FROM item_item_set WHERE item_set_id = '$itemsetID' ";
+			$extraItems = $this->connection->fetchAll($extraItemsStmnt);
+			
+			foreach($extraItems as $result)
+			{
+				$goodToAdd = True;
+				$item_id = $result['item_id'];
+				foreach($itemArray as $itemArrays)
+				{
+					if($item_id == $itemArrays)
+					{
+						$goodToAdd = False;
+						break;
+					}
+				}
+				if($goodToAdd == True)
+				{
+					array_push($itemArray, (int)$item_id);
+				}
+				else
+				{
+					$goodToAdd = True;
+				}
+			}
+			
+		}
+		
+		$arraySize = count($itemArray);
+		$arraySize = $arraySize - 1;
+		$arrayCount = 0; //Keeps track of place in suggestions array
+		$iterationCount = 0; //Tracks number of suggestions given so far
+		$maxIterations = 10; //Sets the maximum number of suggestions to be given
+?>
+
+	<?php if($iterationCount < $maxIterations && $arraySize > $arrayCount): ?>
+	<?php foreach($itemArray as $finalInt) : ?>
+
+        <tr class = "itemList" draggable = "true">    
+			<?php
+			if ($iterationCount < $maxIterations && $arraySize > $arrayCount)
+			{
+				foreach($originalSearchIDs as $originalItemID)
+				{
+					if($itemArray[$arrayCount] != $originalItemID)
+					{
+					
+					}
+					else if($itemArray[$arrayCount] == $originalItemID)
+					{
+						while($itemArray[$arrayCount] == $originalItemID)
+						{
+							$arrayCount++;
+							if($arraySize > $arrayCount && $itemArray[$arrayCount] != $originalItemID)
+							{
+								break;
+							}
+							else if($arraySize > $arrayCount && $itemArray[$arrayCount] == $originalItemID)
+							{
+								
+							}
+							else if($arraySize <= $arrayCount)
+							{
+								break 3;
+							}
+							else
+							{
+								break 2;
+							}
+						}
+					}
+					else
+					{
+						break;
+					}
+				}
+				if($arraySize > $arrayCount)
+				{
+						//First, need to get the 'item' object from the fetched ID code
+						$finalItem = $this->api()->read('items', $itemArray[$arrayCount]);
+						$fetchedItemID = $itemArray[$arrayCount];
+
+						$iterationCount++;
+						$arrayCount++;
+						$representFinalItem = $finalItem->getContent();
+				}
+				
+					
+			}
+			else
+			{
+				break;
+			}
+				?>
+				
+		
+			<td style="width:25%">
+                <?php echo $representFinalItem->title(); ?>
+            </td>
+				<td style="text-align:center">
+					<label for="<?=$fetchedItemID?>"><?=$this->thumbnail($representFinalItem,'medium')?></label>
+				</td>
+			<td style="text-align:right">
+                <i class="fa fa-bars"></i>
+            </td>
+			<td style="text-align:right">
+				<input type="checkbox" id = "<?=$fetchedItemID?>" name="items[]" value="<?= $fetchedItemID ?>" checked>
+			</td>
+				
+		</tr>
+	
+	<?php endforeach; ?>
+	<?php endif; ?>
+		
+	<big> Suggested Items: </big>
+    </table>
+    <input type="submit" value="Generate">
+</form>
+<?php endif;?>
+
+<!-- script for selecting all checkboxes -->
+<script language="JavaScript">
+    function toggle(source) {
+        checkboxes = document.getElementsByName('items[]');
+        for(var i=0, n=checkboxes.length; i<n; i++) {
+            checkboxes[i].checked = source.checked;
+        }
+    }
+</script>
+
+<!-- script for dragging items -->
+<script>
+    var dragSrcEl = null;
+    function handleDragStart(e) {
+        //src node
+        dragSrcEl = this;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', this.innerHTML);
+    }
+
+    function handleDragOver(e) {
+        if (e.preventDefault) {
+            e.preventDefault(); // Allows us to drop.
+        }
+
+        e.dataTransfer.dropEffect = 'move'; 
+        return false;
+    }
+
+    function handleDragEnter(e) {
+        // this / e.target is the current hover target
+        this.classList.add('over');
+    }
+
+    function handleDragLeave(e) {
+        // previous target element
+        this.classList.remove('over');  
+    }
+
+    function handleDrop(e) {
+        // current target element
+        if (e.stopPropagation) {
+            e.stopPropagation(); // stops the browser from redirecting.
+        }
+        if(e.preventDefault){
+            e.preventDefault();
+        }
+
+        // Don't do anything if dropping the same row we're dragging
+        if (dragSrcEl != this) {
+            // Set the source row's HTML to the HTML of the row we dropped on.
+            dragSrcEl.innerHTML = this.innerHTML;
+            this.innerHTML = e.dataTransfer.getData('text/html');
+        }
+        return false;
+    }
+
+    function handleDragEnd(e) {
+        // source node
+        [].forEach.call(rows, function (row) {
+            row.classList.remove('over');
+        });
+    }
+
+
+    var rows = document.querySelectorAll('.itemList');
+    [].forEach.call(rows, function(row) {
+        row.addEventListener('dragstart', handleDragStart, false);
+        row.addEventListener('dragenter', handleDragEnter, false);
+        row.addEventListener('dragover', handleDragOver, false);
+        row.addEventListener('dragleave', handleDragLeave, false);
+        row.addEventListener('drop', handleDrop, false);
+        row.addEventListener('dragend', handleDragEnd, false);
+    });
+</script>
